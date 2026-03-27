@@ -78,6 +78,7 @@ int main(int argc, char * argv[])
                       nullptr /* old sig action */ );
 
 #ifndef NDEBUG
+   // Really shouldn't happen, but I'll check for debug builds just in case.
    if ( sysrc != 0 )
    {
       fprintf( stderr,
@@ -87,7 +88,7 @@ int main(int argc, char * argv[])
                " though Ctrl+C will still terminate the program.",
                sysrc, strerrorname_np(errno), errno, strerror(errno) );
 
-      mainrc |= MAINRC_SIGINT_REGISTRATION_ERR;
+      return MAINRC_SIGINT_REGISTRATION_ERR;
    }
 #endif
 
