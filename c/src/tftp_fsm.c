@@ -92,8 +92,15 @@ void TFTP_FSM_CleanExit(void)
    TFTP_FSM_Session.state = TFTP_FSM_IDLE;
    TFTP_FSM_Session.fname_len = 0;
    memset(TFTP_FSM_Session.fname, 0x00, sizeof TFTP_FSM_Session.fname);
-   (void)fclose(TFTP_FSM_Session.fp);
+
+   if ( TFTP_FSM_Session.fp != nullptr )
+   {
+      (void)fclose(TFTP_FSM_Session.fp);
+      TFTP_FSM_Session.fp = nullptr;
+   }
+
    (void)close(TFTP_FSM_Session.sfd);
+   TFTP_FSM_Session.sfd = -1;
 
    return;
 }

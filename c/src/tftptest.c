@@ -110,6 +110,13 @@ int main(int argc, char * argv[])
       // Await (/w timeout) for update on fault simulation mode
    }
 
+   TFTP_FSM_CleanExit();
+
+   if ( bUserEndedSession )
+      (void)printf("\n\nUser ended session.\n");
+   else
+      (void)fprintf(stderr, "Error occured during main loop.");
+
 Main_CleanupTag:
    // Cleanup
    (void)close(sfd_newconn);
@@ -131,8 +138,6 @@ static void handleSIGINT(int sig_num)
       abort();
 
    bUserEndedSession = true;
-
-   TFTP_FSM_CleanExit();
 }
 
 /**
