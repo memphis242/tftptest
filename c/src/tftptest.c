@@ -29,6 +29,14 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// Internal Headers
+#include "tftp_err.h"
+#include "tftp_fsm.h"
+#include "tftp_log.h"
+#include "tftp_parsecfg.h"
+#include "tftp_pkt.h"
+#include "tftp_util.h"
+
 /***************************** Local Declarations *****************************/
 
 // Types
@@ -39,22 +47,26 @@ enum MainRC
    MAINRC_SIGINT_REGISTRATION_ERR = 0x0002,
    MAINRC_SOCKET_CREATION_ERR     = 0x0004,
    MAINRC_SETSOCKOPT_ERR          = 0x0008,
-   MAINRC_RECVFROM_ERR            = 0x0010,
-   MAINRC_SENDTO_ERR              = 0x0020,
-   MAINRC_FAILED_CLOSE            = 0x0040,
+   MAINRC_SOCKBIND_ERR            = 0x0010,
+   MAINRC_RECVFROM_ERR            = 0x0020,
+   MAINRC_FAILED_CLOSE            = 0x0080,
 };
 
 // File-Scope Variables
 static volatile sig_atomic_t bUserEndedSession = false;
+constexpr unsigned short TFTP_Test_NewConnPort = 23069;
 
 // Local Function Declarations
 static void handleSIGINT(int sig_num);
+static enum MainRC TFTP_Test_SetUpNewConnSock(int * const sfd_ptr);
 
 /******************************* Main Function ********************************/
 int main(int argc, char * argv[])
 {
    int mainrc = MAINRC_FINE;
    int sysrc; // For system calls
+
+   int sfd_newconn = 0; // socket id for new connections on the pre-configured port
 
    // Register SIGINT handler
    struct sigaction sa_cfg;
@@ -81,9 +93,14 @@ int main(int argc, char * argv[])
 
    // TODO: Create command UNIX Domain Socket? Use CLI arg only to set fault simulation mode?
 
-   // Create persistent listening socket on port 21069
+   // Set up socket for listening on for new session requests...
+   mainrc |= (int)TFTP_Test_SetUpNewConnSock(&sfd_newconn);
+   if ( mainrc != MAINRC_FINE )
+      goto Main_CleanupTag;
 
-   // While loop
+   // Primary loop
+   while ( !bUserEndedSession )
+   {
       // Await packet
 
       // Validate request packet
@@ -91,10 +108,12 @@ int main(int argc, char * argv[])
       // Initiate FSM for session and wait for completion
 
       // Await (/w timeout) for update on fault simulation mode
+   }
 
+Main_CleanupTag:
    // Cleanup
+   (void)close(sfd_newconn);
 
-Main_ExitTag:
    return mainrc;
 }
  
@@ -107,8 +126,84 @@ static void handleSIGINT(int sig_num)
 {
    (void)sig_num; // Signal number is not necessary here
 
+   // Abort since we didn't execute a graceful shutdown the first time.
    if ( bUserEndedSession )
       abort();
 
    bUserEndedSession = true;
+
+   TFTP_FSM_CleanExit();
+}
+
+/**
+ * @brief TODO
+ */
+static enum MainRC TFTP_Test_SetUpNewConnSock(int * const sfd_ptr)
+{
+   assert(sfd_ptr != nullptr);
+
+   int sysrc = 0;
+
+   // Create socket
+   *sfd_ptr = socket(AF_INET, SOCK_DGRAM, 0);
+   if ( *sfd_ptr < 0 )
+   {
+      fprintf( stderr,
+               "Error: Failed to create listening socket.\n"
+               "socket() returned: %d, errno: %s (%d): %s\n",
+               *sfd_ptr,
+               strerrorname_np(errno), errno, strerror(errno) );
+
+      return MAINRC_SOCKET_CREATION_ERR;
+   }
+
+   // Facilitate reuse of the consistent port in case a lingering socket from a
+   // previous session hasn't been cleared away. TODO: Verify this is needed.
+   sysrc = setsockopt( *sfd_ptr,
+                       SOL_SOCKET,
+                       SO_REUSEADDR,
+                       &(int){1},
+                       sizeof(int) );
+   assert(sysrc == 0); // if setsockopt() failed, we set something up wrong
+
+   // Bind socket to pre-configured IP/port
+   const struct in_addr numerical_addr = { .s_addr = INADDR_ANY }; // TODO: Configurable
+   const unsigned short port = TFTP_Test_NewConnPort;
+   sysrc = bind( *sfd_ptr,
+                  (struct sockaddr *)
+                  &(struct sockaddr_in) {
+                     .sin_family = AF_INET,
+                     .sin_port = port,
+                     .sin_addr = numerical_addr
+                  },
+                  sizeof(struct sockaddr_in) );
+
+   if ( sysrc != 0 )
+   {
+      char addrbuf[INET_ADDRSTRLEN];
+      const char * rc_ptr = inet_ntop(AF_INET, &numerical_addr, addrbuf, INET_ADDRSTRLEN);
+      if ( nullptr == rc_ptr )
+      {
+         fprintf( stderr,
+                  "inet_ntop() failed to convert, errno: %s (%d): %s\n",
+                  strerrorname_np(errno), errno, strerror(errno) );
+         assert(rc_ptr != nullptr); // Still abort, because this indicates a design issue
+      }
+
+      fprintf( stderr,
+               "Error: Failed to bind socket to specified interface:\n"
+               "\tIP Address: %s\n"
+               "\tPort: %d\n"
+               "bind() returned: %d, errno: %s (%d): %s\n"
+               "Socket will be closed. Please try again.\n",
+               addrbuf, ntohs(port), sysrc,
+               strerrorname_np(errno), errno, strerror(errno) );
+
+      (void)close(*sfd_ptr);
+      *sfd_ptr = -1;
+
+      return MAINRC_SOCKBIND_ERR;
+   }
+
+   return MAINRC_FINE;
 }

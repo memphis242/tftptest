@@ -130,7 +130,7 @@ REL_BIN      := $(REL_DIR)/$(PROJECT)
 
 # --- Debug ---
 DBG_DIR      := $(BUILD_DIR)/debug
-DBG_CFLAGS   := $(C_STD) -Og -g3 $(COMMON_DEFS) $(COMMON_WARNS) $(GCC_EXTRA_WARNS) $(COMMON_INC)
+DBG_CFLAGS   := $(C_STD) -Og -g3 $(COMMON_DEFS) $(COMMON_WARNS) -Wno-unused-parameter $(GCC_EXTRA_WARNS) $(COMMON_INC)
 DBG_OBJS     := $(patsubst $(SRC_DIR)/%.c,$(DBG_DIR)/%.o,$(SRCS))
 DBG_BIN      := $(DBG_DIR)/$(PROJECT)
 
@@ -162,11 +162,13 @@ ANALYSIS_DIR    := $(BUILD_DIR)/analysis
 # ─── Clang analysis flags (used during the analysis-only compile pass) ───────
 
 CLANG_ANALYSIS_CFLAGS := $(C_STD) $(COMMON_DEFS) $(COMMON_WARNS) $(CLANG_EXTRA_WARNS) \
+			 -Wno-unused-parameter \
 			 $(COMMON_INC) \
                           --analyze \
                           -Xanalyzer -analyzer-output=text
 
 GCC_ANALYSIS_CFLAGS   := $(C_STD) $(COMMON_DEFS) $(COMMON_WARNS) $(GCC_EXTRA_WARNS) \
+			 -Wno-unused-parameter \
 			 $(COMMON_INC) \
                           -fanalyzer \
                           -c -o /dev/null
